@@ -8,6 +8,7 @@ from typing import Sequence
 
 import chromadb
 from chromadb.api.models.Collection import Collection
+from chromadb.errors import NotFoundError
 from langchain_core.documents import Document
 
 from ingestion.embeddings import SentenceTransformerEmbeddings
@@ -25,6 +26,31 @@ class ChromaVectorStore:
         self._client = chromadb.PersistentClient(path=str(Path(persist_directory)))
         self._collection: Collection = self._client.get_or_create_collection(name=collection_name)
         self._embeddings = embeddings
+
+    @classmethod
+    def load_persisted(
+        cls,
+        persist_directory: str | Path,
+        embeddings: SentenceTransformerEmbeddings,
+        collection_name: str = "documentation",
+    ) -> "ChromaVectorStore | None":
+        """Open an existing collection without creating a database or collection.
+
+        ``None`` means no persisted collection is available yet, which lets retrieval
+        nodes treat a not-yet-ingested knowledge base as an empty result set.
+        """
+        directory = Path(persist_directory)
+        if not directory.exists():
+            return None
+
+        store = cls.__new__(cls)
+        store._client = chromadb.PersistentClient(path=str(directory))
+        try:
+            store._collection = store._client.get_collection(name=collection_name)
+        except NotFoundError:
+            return None
+        store._embeddings = embeddings
+        return store
 
     def upsert(self, documents: Sequence[Document]) -> int:
         """Embed and persist chunks. Re-ingesting identical chunks is idempotent."""
