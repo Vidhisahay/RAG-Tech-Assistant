@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Custom project overrides
+.venv/
+__pycache__/
+*.pyc
+.env
+chroma_db/
+.vscode/
+.idea/
+*.log
