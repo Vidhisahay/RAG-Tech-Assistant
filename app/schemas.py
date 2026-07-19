@@ -22,3 +22,11 @@ class DocumentGradeResult(BaseModel):
     grade: Literal["relevant", "irrelevant"] = Field(
         description="Whether the chunk directly helps answer the user's question."
     )
+
+
+class GenerationResult(BaseModel):
+    """Validated answer generated exclusively from the provided RAG context."""
+
+    answer: str = Field(
+        description="A grounded answer with metadata-derived citations, or the required unavailable response."
+    )

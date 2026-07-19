@@ -9,8 +9,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.config import CHROMA_DB_DIR, EMBEDDING_MODEL, GROQ_API_KEY, LLM_MODEL, TOP_K
-from app.prompts import DOCUMENT_GRADING_SYSTEM_PROMPT, QUERY_ANALYSIS_SYSTEM_PROMPT
-from app.schemas import DocumentGradeResult, QueryAnalysisResult
+from app.prompts import (
+    ANSWER_GENERATION_SYSTEM_PROMPT,
+    DOCUMENT_GRADING_SYSTEM_PROMPT,
+    QUERY_ANALYSIS_SYSTEM_PROMPT,
+)
+from app.schemas import DocumentGradeResult, GenerationResult, QueryAnalysisResult
 from app.state import CorrectiveRAGState
 from ingestion.embeddings import SentenceTransformerEmbeddings
 from ingestion.vectorstore import ChromaVectorStore
@@ -133,3 +137,53 @@ def document_grading_node(state: CorrectiveRAGState) -> dict[str, Any]:
     if not filtered_docs:
         retry_count += 1
     return {"filtered_docs": filtered_docs, "retry_count": retry_count}
+
+
+def _build_generation_model() -> Any:
+    """Create the deterministic Groq model used for grounded answer generation."""
+    model = ChatGroq(
+        model=LLM_MODEL,
+        api_key=GROQ_API_KEY,
+        temperature=0,
+    )
+    return model.with_structured_output(GenerationResult)
+
+
+def _document_citation(document: Any, index: int) -> str:
+    """Build a stable citation label from the chunk's persisted metadata."""
+    metadata = document.metadata
+    source = str(metadata.get("source") or metadata.get("filename") or f"document-{index}")
+    chunk_id = metadata.get("chunk_id")
+    return f"{source}#chunk-{chunk_id}" if chunk_id is not None else source
+
+
+def generation_node(state: CorrectiveRAGState) -> dict[str, Any]:
+    """Generate a cited answer using only relevance-filtered retrieved context."""
+    question = (state.get("rewritten_question") or state["question"]).strip()
+    if not question:
+        raise ValueError("A question or rewritten_question is required for answer generation")
+
+    documents = state.get("filtered_docs", [])
+    if not documents:
+        return {
+            "answer": "The information is unavailable in the retrieved context.",
+            "sources": [],
+        }
+
+    citations = [_document_citation(document, index) for index, document in enumerate(documents)]
+    context = "\n\n".join(
+        f"[{citation}]\n{document.page_content}"
+        for citation, document in zip(citations, documents)
+    )
+    response = _build_generation_model().invoke(
+        [
+            SystemMessage(content=ANSWER_GENERATION_SYSTEM_PROMPT),
+            HumanMessage(content=f"Question:\n{question}\n\nContext:\n{context}"),
+        ]
+    )
+    generation = (
+        response
+        if isinstance(response, GenerationResult)
+        else GenerationResult.model_validate(response)
+    )
+    return {"answer": generation.answer.strip(), "sources": list(dict.fromkeys(citations))}
