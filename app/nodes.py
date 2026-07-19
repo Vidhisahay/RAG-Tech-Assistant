@@ -152,9 +152,10 @@ def _build_generation_model() -> Any:
 def _document_citation(document: Any, index: int) -> str:
     """Build a stable citation label from the chunk's persisted metadata."""
     metadata = document.metadata
-    source = str(metadata.get("source") or metadata.get("filename") or f"document-{index}")
+    source = str(metadata.get("filename") or metadata.get("source") or f"document-{index}")
+    filename = Path(source).name or f"document-{index}"
     chunk_id = metadata.get("chunk_id")
-    return f"{source}#chunk-{chunk_id}" if chunk_id is not None else source
+    return f"{filename} (chunk {chunk_id})" if chunk_id is not None else filename
 
 
 def generation_node(state: CorrectiveRAGState) -> dict[str, Any]:

@@ -100,5 +100,5 @@ def test_generation_node_uses_mocked_llm_and_returns_sources(monkeypatch) -> Non
 
     assert result == {
         "answer": "Grounded answer.",
-        "sources": ["docs/a.md#chunk-0", "docs/b.md#chunk-2"],
+        "sources": ["a.md (chunk 0)", "b.md (chunk 2)"],
     }
