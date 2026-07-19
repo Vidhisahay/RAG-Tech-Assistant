@@ -9,8 +9,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.config import CHROMA_DB_DIR, EMBEDDING_MODEL, GROQ_API_KEY, LLM_MODEL, TOP_K
-from app.prompts import QUERY_ANALYSIS_SYSTEM_PROMPT
-from app.schemas import QueryAnalysisResult
+from app.prompts import DOCUMENT_GRADING_SYSTEM_PROMPT, QUERY_ANALYSIS_SYSTEM_PROMPT
+from app.schemas import DocumentGradeResult, QueryAnalysisResult
 from app.state import CorrectiveRAGState
 from ingestion.embeddings import SentenceTransformerEmbeddings
 from ingestion.vectorstore import ChromaVectorStore
@@ -77,3 +77,59 @@ def retrieval_node(state: CorrectiveRAGState) -> dict[str, list[Any]]:
     if store is None or store.count == 0:
         return {"retrieved_docs": []}
     return {"retrieved_docs": store.similarity_search(query, limit=TOP_K)}
+
+
+def _build_document_grader_model() -> Any:
+    """Create the deterministic Groq model that returns strict JSON grades."""
+    model = ChatGroq(
+        model=LLM_MODEL,
+        api_key=GROQ_API_KEY,
+        temperature=0,
+    )
+    return model.with_structured_output(DocumentGradeResult)
+
+
+def document_grading_node(state: CorrectiveRAGState) -> dict[str, Any]:
+    """Strictly grade every retrieved chunk and retain only relevant documents.
+
+    Each model invocation returns a JSON-structured ``relevant`` or ``irrelevant``
+    grade. If no chunks pass, this returns an incremented ``retry_count`` so the
+    corrective workflow can rewrite and retrieve again.
+    """
+    question = (state.get("rewritten_question") or state["question"]).strip()
+    if not question:
+        raise ValueError("A question or rewritten_question is required for document grading")
+
+    retrieved_docs = state.get("retrieved_docs", [])
+    if not retrieved_docs:
+        return {
+            "filtered_docs": [],
+            "retry_count": state.get("retry_count", 0) + 1,
+        }
+
+    grader = _build_document_grader_model()
+    filtered_docs = []
+    for document in retrieved_docs:
+        response = grader.invoke(
+            [
+                SystemMessage(content=DOCUMENT_GRADING_SYSTEM_PROMPT),
+                HumanMessage(
+                    content=(
+                        f"User question:\n{question}\n\n"
+                        f"Retrieved document chunk:\n{document.page_content}"
+                    )
+                ),
+            ]
+        )
+        grade = (
+            response
+            if isinstance(response, DocumentGradeResult)
+            else DocumentGradeResult.model_validate(response)
+        )
+        if grade.grade == "relevant":
+            filtered_docs.append(document)
+
+    retry_count = state.get("retry_count", 0)
+    if not filtered_docs:
+        retry_count += 1
+    return {"filtered_docs": filtered_docs, "retry_count": retry_count}

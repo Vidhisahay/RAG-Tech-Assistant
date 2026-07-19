@@ -14,3 +14,11 @@ class QueryAnalysisResult(BaseModel):
     query_type: Literal["conceptual", "how_to", "troubleshooting", "api_reference"] = Field(
         description="The question category selected from the supported corrective-RAG categories."
     )
+
+
+class DocumentGradeResult(BaseModel):
+    """Validated strict relevance grade for one retrieved document chunk."""
+
+    grade: Literal["relevant", "irrelevant"] = Field(
+        description="Whether the chunk directly helps answer the user's question."
+    )
