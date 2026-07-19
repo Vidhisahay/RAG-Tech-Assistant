@@ -83,6 +83,20 @@ class ChromaVectorStore:
     def count(self) -> int:
         return self._collection.count()
 
+    def list_document_names(self) -> list[str]:
+        """Return sorted unique document names tracked in chunk metadata."""
+        total = self.count
+        if total == 0:
+            return []
+
+        result = self._collection.get(limit=total, include=["metadatas"])
+        names = {
+            str(metadata.get("filename", "")).strip()
+            for metadata in (result.get("metadatas") or [])
+            if metadata
+        }
+        return sorted(name for name in names if name)
+
     @staticmethod
     def _document_id(document: Document) -> str:
         source = str(document.metadata.get("source", ""))
