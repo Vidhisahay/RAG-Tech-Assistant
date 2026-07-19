@@ -1,72 +1,185 @@
 # RAG Tech Assistant
 
-## Project Overview
+> A corrective Retrieval-Augmented Generation (RAG) assistant for technical documentation built with **LangGraph**, **FastAPI**, and **ChromaDB**.
 
-RAG Tech Assistant is a corrective Retrieval-Augmented Generation (RAG) assistant for technical documentation built with LangGraph. It answers questions by rewriting the query when needed, retrieving relevant context from a local ChromaDB index, grading retrieved chunks, and generating grounded responses with cited sources.
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agentic_RAG-orange)
+![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-green)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-## Architecture
+
+## Overview
+
+RAG Tech Assistant is a **self-corrective RAG system** that answers questions from technical documentation using a LangGraph workflow.
+
+Instead of directly generating responses, the assistant:
+
+- Rewrites ambiguous user queries
+- Retrieves relevant documentation chunks from ChromaDB
+- Grades retrieved documents for relevance
+- Retries retrieval when context is insufficient
+- Generates grounded answers with citations
+
+The project is served through **FastAPI** and includes a **Streamlit frontend** for interactive querying.
+
+
+## Features
+
+- LangGraph-based corrective RAG workflow
+- Query rewriting
+- Semantic document retrieval using ChromaDB
+- LLM-based document relevance grading
+- Conditional routing with retry logic
+- Grounded answer generation
+- Source citations
+- FastAPI REST API
+- Streamlit frontend
+- Markdown document ingestion
+- Automated test suite (13 passing tests)
+
+
+## System Architecture
 
 ```mermaid
 flowchart TD
-	U[User] --> QA[Query Analysis]
-	QA --> R[Retrieval]
-	R --> DG[Document Grading]
-	DG -->|Relevant| G[Generation]
-	G --> S[Response]
-	DG -->|Irrelevant| QR[Query Rewrite]
-	QR --> R
+
+A[User Query]
+
+B[Query Analysis]
+
+C[Retrieval]
+
+D[Document Grading]
+
+E[Generation]
+
+F[Response]
+
+G[Rewrite Query]
+
+H[I don't know]
+
+A --> B
+B --> C
+C --> D
+
+D -->|Relevant Documents| E
+E --> F
+
+D -->|No Relevant Docs| G
+G --> C
+
+G -->|Retry Limit Reached| H
 ```
+
+
+## Application Screenshots
+
+### Streamlit Frontend
+
+![Streamlit UI](visuals/frontend.png)
+
+---
+
+
+### FastAPI Swagger UI
+
+![Swagger UI](visuals/docs.png)
+
+
 
 ## Tech Stack
 
-- Python
-- FastAPI
-- LangGraph
-- LangChain
-- ChromaDB
-- Sentence Transformers
-- Groq Llama 3.3
+| Component | Technology |
+|------------|------------|
+| Language | Python |
+| Backend | FastAPI |
+| Workflow | LangGraph |
+| LLM | Groq Llama 3.3 |
+| Framework | LangChain |
+| Vector Store | ChromaDB |
+| Embeddings | sentence-transformers (MiniLM-L6-v2) |
+| Frontend | Streamlit |
+| Testing | Pytest |
 
-## Folder Structure
 
-```text
-app/         FastAPI app, schemas, graph, and workflow nodes
-docs/        Markdown documentation indexed into the knowledge base
-ingestion/   Loaders, chunking, embeddings, and Chroma persistence
-chroma_db/   Local vector store data
-tests/       Project tests
+
+## Getting Started
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Vidhisahay/RAG-Tech-Assistant.git
+
+cd RAG-Tech-Assistant
 ```
 
-## Setup Instructions
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+### 2. Create a virtual environment
+
+```bash
+python -m venv .venv
+```
+
+Activate it.
+
+Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+Linux / macOS
+
+```bash
+source .venv/bin/activate
+```
+
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Add your environment variables.
+### 4. Configure environment variables
 
-## Environment Variables
+Create a `.env` file.
 
-- `GROQ_API_KEY` - required for LangGraph query analysis, grading, and generation
+```env
+GROQ_API_KEY=your_api_key
+```
 
-Optional defaults are configured in `app/config.py` for the local Chroma directory and model settings.
 
-## Running the Project
+### 5. Build the vector database
 
-Run the API server:
+```bash
+python ingestion/ingest.py
+```
+
+
+### 6. Start FastAPI
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Build or refresh the index from local Markdown files:
+Open
+
+```
+http://127.0.0.1:8000/docs
+```
+
+
+### 7. Start Streamlit
 
 ```bash
-python ingestion/ingest.py
+streamlit run ui/app.py
 ```
+
+---
+
 
 ## API Endpoints
 
@@ -75,16 +188,72 @@ python ingestion/ingest.py
 - `GET /documents` - return indexed document names
 - `POST /feedback` - store thumbs-up/down feedback in `feedback.json`
 
+
+### Example Query
+
+Request
+
+```json
+{
+    "question":"How do I define a request body in FastAPI?"
+}
+```
+
+Response
+
+```json
+{
+  "answer":"FastAPI uses Pydantic models...",
+  "sources":[
+      "request_body.md"
+  ]
+}
+```
+
+
 ## Design Decisions
 
-- `RecursiveCharacterTextSplitter` preserves local structure while producing chunks that stay within embedding and retrieval limits.
-- MiniLM embeddings provide a fast, lightweight local embedding model suitable for technical documentation search.
-- ChromaDB is a simple persistent local vector store that fits the project’s offline-first workflow.
-- Document grading reduces noisy retrieval results by filtering chunks before generation.
-- Retry logic lets the graph rewrite the query and try retrieval again when the first pass is not relevant enough.
+1. **RecursiveCharacterTextSplitter**- Chosen to preserve document structure while producing chunks that fit embedding model limits.
+2. **MiniLM Embeddings**- Provides fast, lightweight embeddings with good semantic search performance for technical documentation.
+3. **ChromaDB**- A lightweight persistent vector database that integrates well with LangChain and requires no external infrastructure.
+4. **Document Grading**- LLM-based relevance grading filters noisy retrieval results before generation, improving answer quality.
+5. **Retry Logic**- When no relevant documents are found, the graph rewrites the query and retries retrieval before returning a fallback response.
 
-## Future Improvements
 
-- Hallucination checker
-- Conversation memory
+## Testing
+
+The project includes automated tests covering:
+
+- Document loading
+- Chunking
+- Retrieval
+- Document grading
+- Answer generation
+- FastAPI endpoints
+
+Run the test suite:
+
+```bash
+pytest
+```
+
+Current Status
+
+```
+13 passed
+```
+
+---
+
+# Future Improvements
+
+- Hallucination detection node
 - Web search fallback
+- Conversation memory
+- Hybrid keyword + vector retrieval
+- Reranking models
+- Docker deployment
+
+# Author
+
+Made with ❤️ by Vidhi - [GitHub](https://github.com/Vidhisahay) · [LinkedIn](https://www.linkedin.com/in/vidhisahay/)
