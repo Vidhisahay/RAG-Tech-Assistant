@@ -16,8 +16,8 @@ class CorrectiveRAGState(TypedDict):
         "The improved retrieval query produced when the original question needs clarification or correction.",
     ]
     query_type: Annotated[
-        Literal["documentation", "web", "unknown"],
-        "The route selected for retrieval: internal documentation, web search, or not yet classified.",
+        Literal["conceptual", "how_to", "troubleshooting", "api_reference"],
+        "The question category selected by query analysis for downstream retrieval and answer behavior.",
     ]
     retrieved_docs: Annotated[
         list[Document],
